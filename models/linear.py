@@ -8,7 +8,6 @@ from scipy import stats
 from tabulate import tabulate
 import jax.numpy as jnp
 from jax import grad, jit
-import pandas as pd
 from sklearn.model_selection import KFold
 
 class LinearRegression:
