@@ -24,7 +24,7 @@ class LinearRegression:
         Parameters:
         -----------
         regularization : str
-            Type of regularization ('None', 'Ridge', or 'Lasso').
+            Type of regularization ('None', 'Ridge','Lasso' or 'ElasticNet").
         alpha : float
             Regularization strength (used for Ridge and Lasso).
         n_iter : int
@@ -41,7 +41,10 @@ class LinearRegression:
             self.lr = lr
         if self.regularization  == "Ridge":
             self.alpha = alpha
-
+        if self.regularization  == "ElasticNet":
+            self.alpha = alpha
+            self.n_iter = n_iter
+            self.lr = lr
     def __repr__(self) -> str:
         """
         Return a string representation of the model.
@@ -78,6 +81,7 @@ class LinearRegression:
             raise ValueError("Data is not numerical.")
 
         x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
+
         def _loss(weights: jnp.ndarray, arg: jnp.ndarray, y: jnp.ndarray) -> float:
             """
             Lasso loss: MSE + L1 penalty
@@ -86,11 +90,16 @@ class LinearRegression:
             mse = jnp.mean((y - y_pred) ** 2)
             l1 = self.alpha * jnp.sum(jnp.abs(weights[1:])) 
             return mse + l1
-
+        def _elastic_loss(weights: jnp.ndarray, arg: jnp.ndarray, y: jnp.ndarray) -> float:
+            l2 = (1-self.alpha) *jnp.sum(weights[1:]**2)
+            return _loss(weights, arg, y) + l2
+        
         if self.regularization =="None":
             self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y  
+        
         if self.regularization =="Ridge":
             self.beta = np.linalg.pinv(x.T @ x + self.alpha * np.ones_like(x.T @ x) ) @ x.T @ Y
+        
         if self.regularization =="Lasso":
             loss_grad = jit(grad(_loss))
             self.beta = jnp.zeros(x.shape[1])
@@ -100,6 +109,16 @@ class LinearRegression:
                 self.beta -= self.lr * grads
             if np.any(np.isnan(self.beta)):
                 raise ValueError("Gradient explosion, please change learning rate")
+            
+        if self.regularization =="ElasticNet":
+            loss_grad = jit(grad(_elastic_loss))
+            self.beta = jnp.zeros(x.shape[1])
+            for _ in range(self.n_iter):
+                grads = loss_grad(self.beta, x, self.Y)
+                self.beta -= self.lr * grads
+            if np.any(np.isnan(self.beta)):
+                raise ValueError("Gradient explosion, please change learning rate")
+            
         return self
 
     def predict(self, X: NDArray) -> NDArray:
@@ -515,12 +534,12 @@ class LinearRegression:
 
         print(tabulate(table, headers=['Metric', 'Value'], tablefmt='fancy_grid'))
     
-    def do_all(self, X:NDArray, Y:NDArray) -> None:
+    def do_all(self, X:NDArray, Y:NDArray, k: int=5, random_state: int=42) -> None:
 
         print(f"Model score:{self.score(X, Y)}")
         print(f"R adjusted:{self.r_adjusted(X, Y)}")
         print(f"Beta: {self.Beta}")
-        print(f"Cross validation score: {self.cross_validate(X, Y)}")
+        print(f"Cross validation score: {self.cross_validate(X, Y, k=k, random_state=random_state )}")
         self.run_assumptions(X,Y)
         self.print_errors(X, Y)
         self.plot(X, Y)
@@ -556,9 +575,9 @@ class LinearRegression:
 
             model = LinearRegression(
                 regularization=self.regularization,
-                alpha=getattr(self, 'alpha', 0.1),
-                n_iter=getattr(self, 'n_iter', 1000),
-                lr=getattr(self, 'lr', 0.0001)
+                alpha=self.alpha,
+                n_iter=self.n_iter,
+                lr=self.lr
             ).fit(X_train, Y_train)
 
             metrics['MAE'].append(model.MAE(X_test, Y_test))
