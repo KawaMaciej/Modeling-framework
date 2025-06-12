@@ -9,7 +9,7 @@ from tabulate import tabulate
 import jax.numpy as jnp
 from jax import grad, jit
 import pandas as pd
-
+from sklearn.model_selection import KFold
 
 class LinearRegression:
     """
@@ -98,7 +98,8 @@ class LinearRegression:
             for _ in range(self.n_iter):
                 grads = loss_grad(self.beta, x, self.Y)
                 self.beta -= self.lr * grads
-
+            if np.any(np.isnan(self.beta)):
+                raise ValueError("Gradient explosion, please change learning rate")
         return self
 
     def predict(self, X: NDArray) -> NDArray:
@@ -274,7 +275,7 @@ class LinearRegression:
         NDArray
             Full parameter vector.
         """
-        if self.beta is None or self.regularization == "Lasso":
+        if self.beta is None:
             raise ValueError("Model is not fitted yet.")
         return self.beta
 
@@ -514,3 +515,55 @@ class LinearRegression:
 
         print(tabulate(table, headers=['Metric', 'Value'], tablefmt='fancy_grid'))
     
+    def do_all(self, X:NDArray, Y:NDArray) -> None:
+
+        print(f"Model score:{self.score(X, Y)}")
+        print(f"R adjusted:{self.r_adjusted(X, Y)}")
+        print(f"Beta: {self.Beta}")
+        print(f"Cross validation score: {self.cross_validate(X, Y)}")
+        self.run_assumptions(X,Y)
+        self.print_errors(X, Y)
+        self.plot(X, Y)
+        self.plot_residuals(X, Y)
+        
+
+    def cross_validate(self, X: NDArray, Y: NDArray, k: int = 5, random_state: int = 42) -> dict:
+        """
+        Perform k-fold cross-validation and return average performance metrics.
+
+        Parameters:
+        -----------
+        X : NDArray
+            Feature matrix.
+        Y : NDArray
+            Target vector.
+        k : int
+            Number of folds.
+        random_state : int
+            Seed for reproducibility.
+
+        Returns:
+        --------
+        dict
+            Dictionary with average MAE, RMSE, MSE, and R^2.
+        """
+        kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
+        metrics = {'MAE': [], 'RMSE': [], 'MSE': [], 'R2': []}
+
+        for train_index, test_index in kf.split(X):
+            X_train, X_test = X[train_index], X[test_index]
+            Y_train, Y_test = Y[train_index], Y[test_index]
+
+            model = LinearRegression(
+                regularization=self.regularization,
+                alpha=getattr(self, 'alpha', 0.1),
+                n_iter=getattr(self, 'n_iter', 1000),
+                lr=getattr(self, 'lr', 0.0001)
+            ).fit(X_train, Y_train)
+
+            metrics['MAE'].append(model.MAE(X_test, Y_test))
+            metrics['RMSE'].append(model.RMSE(X_test, Y_test))
+            metrics['MSE'].append(model.MSE(X_test, Y_test))
+            metrics['R2'].append(model.score(X_test, Y_test))
+
+        return {key: round(float(np.mean(val)), 4) for key, val in metrics.items()}
