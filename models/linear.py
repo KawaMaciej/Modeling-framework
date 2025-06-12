@@ -64,6 +64,8 @@ class LinearRegression:
         LinearRegression
             The fitted model instance.
         """
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
         if hasattr(X, 'columns'):
             self.feature_names = X.columns.tolist()
         else:
@@ -74,8 +76,7 @@ class LinearRegression:
         is_numeric = np.issubdtype(self.X.dtype, np.number)
         if is_numeric == False:
             raise ValueError("Data is not numerical.")
-        if X.ndim == 1:
-            X = X.reshape(-1, 1)
+
         x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
         def _loss(weights: jnp.ndarray, arg: jnp.ndarray, y: jnp.ndarray) -> float:
             """
@@ -143,7 +144,13 @@ class LinearRegression:
         y_mean = Y.mean()
         y_predicted = self.predict(X)
         return 1 - np.sum((Y - y_predicted) ** 2) / np.sum((Y - y_mean) ** 2)
-
+    
+    def r_adjusted(self, X:NDArray, Y:NDArray) -> float:
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
+        r_adj = 1 - (1-self.score(X,Y)*(X.shape[0]-1)/(X.shape[0]+X.shape[1]-1))
+        return float(r_adj)
+    
     def resid(self, X: NDArray, Y: NDArray) -> NDArray:
         """
         Compute model residuals.
@@ -162,17 +169,11 @@ class LinearRegression:
         """
         return np.asarray(Y - self.predict(X))
 
-    def plot(self, X: NDArray, Y:NDArray) -> None:
+    def plot(self, X: NDArray, Y: NDArray) -> None:
         """
-        Plot features against target with fitted regression line using Plotly.
-
-        Parameters:
-        -----------
-        X : NDArray
-            Feature matrix.
-        Y : NDArray
-            Target values.
+        Plot each feature against the target and show the fitted values from the multivariate model.
         """
+        import plotly.graph_objs as go
         X = np.asarray(X)
         Y = np.asarray(Y)
         if X.ndim == 1:
@@ -180,21 +181,16 @@ class LinearRegression:
         if Y.ndim > 1:
             Y = Y.flatten()
         n_features = X.shape[1]
+        y_pred = self.predict(X)
 
         for i in range(n_features):
-            Xi = X[:, i].reshape(-1, 1)
-            Xi_line = np.linspace(Xi.min(), Xi.max(), 100).reshape(-1, 1)
-
-            model_temp = LinearRegression()
-            model_temp.fit(Xi, Y)
-            Yi_line = model_temp.predict(Xi_line)
-
-            scatter = go.Scatter(x=Xi.flatten(), y=Y, mode='markers', name='Data Points')
-            line = go.Scatter(x=Xi_line.flatten(), y=Yi_line, mode='lines', name='Regression Line')
-
+            Xi = X[:, i].flatten()
+            scatter = go.Scatter(x=Xi, y=Y, mode='markers', name='Data Points')
+            line = go.Scatter(x=Xi, y=y_pred, mode='markers', 
+                              name='Model Prediction', marker=dict(color='red'))
             fig = go.Figure(data=[scatter, line])
             fig.update_layout(
-                title=f'Feature {i + 1} vs Y',
+                title=f'{self.feature_names[i]} vs Y (with model prediction)',
                 xaxis_title=f'X{i + 1}',
                 yaxis_title='Y'
             )
@@ -400,11 +396,14 @@ class LinearRegression:
         -------
         VIF values and interpretation for each feature.
         """
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)        
         vifs = []
         interpretation = []
         n_features = X.shape[1]
         X = np.asarray(X)
         Y = np.asarray(Y)
+
         for i in range(n_features):
             X_others = np.delete(X, i, axis=1)
             y_target = X[:, i] 
