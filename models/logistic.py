@@ -7,7 +7,7 @@ class LogisticRegression:
         self.theta: NDArray = np.zeros((n_features, n_classes)) 
         self.n_iter = n_iter
         self.lr = lr
-        self.classes = n_classes
+        self.n_classes = n_classes
 
     def score_function(self, x: NDArray, k: int):
         return np.dot(x, self.theta[:, k])
@@ -25,7 +25,7 @@ class LogisticRegression:
         pass
 
     def fit(self, X: NDArray, Y: NDArray):
-        Y = np.eye(self.classes)[Y]
+        Y = np.eye(self.n_classes)[Y]
 
         for _ in range(self.n_iter):
             probs = self.softmax(X)
@@ -35,7 +35,41 @@ class LogisticRegression:
 
         return self
 
-    def predict(self, X):
+    def predict(self, X: NDArray) -> NDArray:
         preds = self.softmax(X)
         return np.argmax(preds, axis=1)
+    
+    def confusion_matrix(self, X: NDArray, Y: NDArray):
+        pred = self.predict(X)
+        cm = np.zeros([self.n_classes, self.n_classes])
 
+        for i in range(self.n_classes):
+            for j in range(self.n_classes):
+                if i == j:
+                    cm[i,i] = np.sum((pred == np.unique(Y)[i]) & (Y == np.unique(Y)[i]))
+                else:
+                    cm[i,j] = np.sum((pred == np.unique(Y)[j]) & (Y == np.unique(Y)[i]))
+        
+        return cm
+    
+    def precision(self, X:NDArray, Y:NDArray):
+        cm = self.confusion_matrix(X, Y)
+        precision = []
+        for i in range(self.n_classes):
+            precision.append(
+                cm[i,i]/np.sum(cm[:,i])
+                )
+        return np.array(precision)
+    
+    def recall(self, X:NDArray, Y:NDArray):
+        cm = self.confusion_matrix(X, Y)
+        recall = [] 
+        for i in range(self.n_classes):
+            recall.append(
+                cm[i,i]/np.sum(cm[i,:])
+                )
+        return np.array(recall)
+    def f1_stat(self, X: NDArray, Y: NDArray):
+        f1 = 2/(1/self.precision(X, Y)+1/self.recall(X, Y))
+
+        return f1

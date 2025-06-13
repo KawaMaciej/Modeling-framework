@@ -48,7 +48,7 @@ class LinearRegression:
         """
         Return a string representation of the model.
         """
-        return f"{self.__class__.__name__}{self.regularization}(fit_intercept=True)"
+        return f"{self.__class__.__name__}{ self.regularization}(fit_intercept=True)"
 
     def fit(self, X: NDArray, Y: NDArray ) -> "LinearRegression":
         """
@@ -491,6 +491,17 @@ class LinearRegression:
         )))
 
         return mae
+    def Cooks_distance(self, X: NDArray, Y: NDArray) -> NDArray:
+        D = []
+        pred = self.predict(X)
+        for i in range(X.shape[0]):
+            X_without_ith = np.delete(X, i, axis = 0)
+            Y_without_ith = np.delete(Y, i, axis = 0)
+            pred_without_ith = np.delete(pred, i, axis = 0)
+            model = self.fit(X_without_ith, Y_without_ith)
+            square = (pred_without_ith - model.predict(X_without_ith))**2
+            D.append(np.sum(square)/(self.MSE(X, Y)*X.shape[1]))
+        return np.array(D)
     
     def print_errors(self, X: NDArray, Y: NDArray) -> None:
         """
