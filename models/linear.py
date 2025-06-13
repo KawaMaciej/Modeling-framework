@@ -9,6 +9,7 @@ from tabulate import tabulate
 import jax.numpy as jnp
 from jax import grad, jit
 from sklearn.model_selection import KFold
+from metrics.regression_metrics import *
 
 class LinearRegression:
     """
@@ -468,29 +469,7 @@ class LinearRegression:
             self.check_multicollinearity(X, Y)
             self.check_normality_of_resid(X, Y)
     
-    def MSE(self, X: NDArray, Y: NDArray) -> float:
 
-        mse = float(np.mean((Y-self.predict(X))**2))
-
-        return mse
-    
-    def RMSE(self, X: NDArray, Y: NDArray) -> float:
-
-        rmse = np.sqrt(
-            self.MSE(X, Y)
-        )
-        
-        return rmse
-    
-    def MAE(self, X: NDArray, Y: NDArray) -> float:
-
-        mae = float(
-            np.mean(
-                np.abs(
-            self.predict(X) - Y
-        )))
-
-        return mae
     def Cooks_distance(self, X: NDArray, Y: NDArray) -> NDArray:
         D = []
         pred = self.predict(X)
@@ -500,10 +479,10 @@ class LinearRegression:
             pred_without_ith = np.delete(pred, i, axis = 0)
             model = self.fit(X_without_ith, Y_without_ith)
             square = (pred_without_ith - model.predict(X_without_ith))**2
-            D.append(np.sum(square)/(self.MSE(X, Y)*X.shape[1]))
+            D.append(np.sum(square)/(MSE(Y, pred)*X.shape[1]))
         return np.array(D)
     
-    def print_errors(self, X: NDArray, Y: NDArray) -> None:
+    def print_errors(self, Y: NDArray, preds: NDArray) -> None:
         """
         Calculate and display common regression error metrics in a formatted table.
 
@@ -532,9 +511,9 @@ class LinearRegression:
         ╘═════════╧══════════╛
         """
 
-        mae = self.MAE(X, Y)   
-        rmse = self.RMSE(X, Y)  
-        mse = self.MSE(X, Y)   
+        mae = MAE(Y, preds)   
+        rmse = RMSE(Y, preds)  
+        mse = MSE(Y, preds)   
 
         table = [
             ['MAE', round(mae, 4)],
@@ -545,13 +524,13 @@ class LinearRegression:
         print(tabulate(table, headers=['Metric', 'Value'], tablefmt='fancy_grid'))
     
     def do_all(self, X:NDArray, Y:NDArray, k: int=5, random_state: int=42) -> None:
-
+        preds = self.predict(X)
         print(f"Model score:{self.score(X, Y)}")
         print(f"R adjusted:{self.r_adjusted(X, Y)}")
         print(f"Beta: {self.Beta}")
         print(f"Cross validation score: {self.cross_validate(X, Y, k=k, random_state=random_state )}")
         self.run_assumptions(X,Y)
-        self.print_errors(X, Y)
+        self.print_errors(Y, preds)
         self.plot(X, Y)
         self.plot_residuals(X, Y)
         
@@ -590,9 +569,9 @@ class LinearRegression:
                 lr=self.lr
             ).fit(X_train, Y_train)
 
-            metrics['MAE'].append(model.MAE(X_test, Y_test))
-            metrics['RMSE'].append(model.RMSE(X_test, Y_test))
-            metrics['MSE'].append(model.MSE(X_test, Y_test))
+            metrics['MAE'].append(MAE(Y_test, model.predict(X_test)))
+            metrics['RMSE'].append(RMSE(Y_test, model.predict(X_test)))
+            metrics['MSE'].append(MSE(Y_test, model.predict(X_test)))
             metrics['R2'].append(model.score(X_test, Y_test))
 
         return {key: round(float(np.mean(val)), 4) for key, val in metrics.items()}
