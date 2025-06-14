@@ -80,18 +80,35 @@ class LogisticRegression:
         exp_scores = np.exp(logits)
         return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
 
-    def cross_entropy(self, X: NDArray) -> float:
+    def cross_entropy(self, X: NDArray, Y: NDArray) -> float:
         """
-        (Optional) Compute the cross-entropy loss.
-        Placeholder for future implementation.
+        Compute the average cross-entropy loss.
 
         Args:
-            X (NDArray): Input feature matrix.
+            X (NDArray): Input feature matrix of shape (n_samples, n_features).
+            Y (NDArray): Integer class labels of shape (n_samples,).
 
         Returns:
-            float: Cross-entropy loss.
+            float: Average cross-entropy loss across all samples.
         """
-        pass  # Not implemented yet
+        X = self._add_bias(X)
+        probs = self.softmax(X)
+        n_samples = X.shape[0]
+
+        Y_onehot = np.eye(self.n_classes)[Y]
+
+        eps = 1e-15
+        probs = np.clip(probs, eps, 1 - eps)
+
+        loss = -np.sum(Y_onehot * np.log(probs)) / n_samples
+
+        if self.regularization == "l2":
+            loss += self.alpha / 2 * np.sum(self.theta[1:, :] ** 2)
+
+        elif self.regularization == "l1":
+            loss += self.alpha * np.sum(np.abs(self.theta[1:, :]))
+
+        return loss
 
     def fit(self, X: NDArray, Y: NDArray) -> "LogisticRegression":
         """
