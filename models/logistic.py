@@ -1,7 +1,9 @@
 import numpy as np
 from numpy.typing import NDArray
 from metrics.classification_metrics import *
-
+import torch
+from solvers.grad_methods import GradientDescent, LBFGS
+import torch.nn.functional as F
 
 class LogisticRegression:
     """
@@ -27,7 +29,10 @@ class LogisticRegression:
         n_iter: int = 1000,
         lr: float = 0.001,
         regularization: str = "None",
-        alpha: float = 0.2
+        alpha: float = 0.2,
+        solver: str = "GD",
+        m: int = 10,
+        random_state = 42
     ) -> None:
         """
         Initialize the Logistic Regression model.
@@ -43,12 +48,22 @@ class LogisticRegression:
         valid_regularizations = {"None", "l1", "l2"}
         if regularization not in valid_regularizations:
             raise ValueError(f"regularization must be one of {valid_regularizations}, got '{regularization}'")
-        
-        self.theta: NDArray = np.zeros((n_features + 1, n_classes))  # +1 for bias
-        self.n_iter = n_iter
-        self.lr = lr
         self.n_classes = n_classes
         self.n_features = n_features
+        
+        np.random.seed(random_state)
+
+        self.theta =np.random.randn(self.n_features + 1, self.n_classes)
+       
+        self.solver = solver
+        if solver == "GD":
+            self.n_iter = n_iter
+            self.lr = lr
+        if solver == "LBFGS":
+            self.n_iter = n_iter
+            self.lr = lr
+            self.m = m
+
         self.regularization = regularization
         self.alpha = alpha if regularization in {"l1", "l2"} else 0.0
 
@@ -75,41 +90,30 @@ class LogisticRegression:
         Returns:
             NDArray: Probability matrix of shape (n_samples, n_classes).
         """
-        logits = X @ self.theta
-        logits -= np.max(logits, axis=1, keepdims=True)  # Numerical stability
+        theta = self.theta.reshape(self.n_features + 1, self.n_classes)
+        logits = X @ theta
+        logits -= np.max(logits, axis=1, keepdims=True) 
         exp_scores = np.exp(logits)
         return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
 
-    def cross_entropy(self, X: NDArray, Y: NDArray) -> float:
-        """
-        Compute the average cross-entropy loss.
 
-        Args:
-            X (NDArray): Input feature matrix of shape (n_samples, n_features).
-            Y (NDArray): Integer class labels of shape (n_samples,).
+    def cross_entropy(self, theta_flat):
+        X = torch.tensor(self.X, dtype=torch.float64)
+        Y = torch.tensor(self.Y, dtype=torch.long)  # integer labels, long dtype
+        theta = theta_flat.view(self.n_features + 1, self.n_classes)
 
-        Returns:
-            float: Average cross-entropy loss across all samples.
-        """
-        X = self._add_bias(X)
-        probs = self.softmax(X)
-        n_samples = X.shape[0]
+        logits = X @ theta  # shape: (n_samples, n_classes)
 
-        Y_onehot = np.eye(self.n_classes)[Y]
-
-        eps = 1e-15
-        probs = np.clip(probs, eps, 1 - eps)
-
-        loss = -np.sum(Y_onehot * np.log(probs)) / n_samples
+        # Use PyTorch's built-in cross_entropy (which includes softmax internally)
+        loss = F.cross_entropy(logits, Y)
 
         if self.regularization == "l2":
-            loss += self.alpha / 2 * np.sum(self.theta[1:, :] ** 2)
-
+            loss += self.alpha / 2 * torch.sum(theta[1:, :] ** 2)
         elif self.regularization == "l1":
-            loss += self.alpha * np.sum(np.abs(self.theta[1:, :]))
+            loss += self.alpha * torch.sum(torch.abs(theta[1:, :]))
 
         return loss
-
+        
     def fit(self, X: NDArray, Y: NDArray) -> "LogisticRegression":
         """
         Train the logistic regression model using gradient descent.
@@ -121,23 +125,13 @@ class LogisticRegression:
         Returns:
             LogisticRegression: The trained model instance.
         """
-        Y_onehot = np.eye(self.n_classes)[Y]
-        X = self._add_bias(X)
+        self.Y = Y  # keep as integer labels, no one-hot
+        self.X = self._add_bias(X)
 
-        for _ in range(self.n_iter):
-            probs = self.softmax(X)
-            error = probs - Y_onehot
-            grad = X.T @ error / X.shape[0]
-
-            if self.regularization == "l2":
-                grad += self.alpha * self.theta  # L2 penalty
-
-            if self.regularization == "l1":
-                reg_term = np.sign(self.theta)
-                reg_term[0, :] = 0  # No bias regularization
-                grad += self.alpha * reg_term
-
-            self.theta -= self.lr * grad
+        if self.solver == "GD":
+            self.theta = GradientDescent(self.cross_entropy, self.theta, self.lr, self.n_iter)
+        elif self.solver == "LBFGS":
+            self.theta = LBFGS(self.cross_entropy, self.theta, self.lr, self.n_iter, self.m)
 
         return self
 
