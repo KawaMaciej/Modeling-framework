@@ -56,6 +56,9 @@ class LogisticRegression:
         self.theta =np.random.randn(self.n_features + 1, self.n_classes)
        
         self.solver = solver
+        valid_solvers = {"GD", "LBFGS"}
+        if solver not in valid_solvers:
+            raise ValueError(f"Solver must be one of {valid_solvers}, got '{solver}'")
         if solver == "GD":
             self.n_iter = n_iter
             self.lr = lr
@@ -97,14 +100,22 @@ class LogisticRegression:
         return exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
 
 
-    def cross_entropy(self, theta_flat):
+    def cross_entropy(self, theta_flat: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the cross-entropy loss (optionally regularized).
+
+        Args:
+            theta_flat (torch.Tensor): Flattened parameter tensor.
+
+        Returns:
+            torch.Tensor: Scalar tensor representing the loss.
+        """
         X = torch.tensor(self.X, dtype=torch.float64)
-        Y = torch.tensor(self.Y, dtype=torch.long)  # integer labels, long dtype
+        Y = torch.tensor(self.Y, dtype=torch.long) 
         theta = theta_flat.view(self.n_features + 1, self.n_classes)
 
-        logits = X @ theta  # shape: (n_samples, n_classes)
+        logits = X @ theta 
 
-        # Use PyTorch's built-in cross_entropy (which includes softmax internally)
         loss = F.cross_entropy(logits, Y)
 
         if self.regularization == "l2":
@@ -114,7 +125,7 @@ class LogisticRegression:
 
         return loss
         
-    def fit(self, X: NDArray, Y: NDArray) -> "LogisticRegression":
+    def fit(self, X: NDArray[np.float64], Y: NDArray[np.float64]) -> "LogisticRegression":
         """
         Train the logistic regression model using gradient descent.
 
@@ -125,7 +136,7 @@ class LogisticRegression:
         Returns:
             LogisticRegression: The trained model instance.
         """
-        self.Y = Y  # keep as integer labels, no one-hot
+        self.Y = Y 
         self.X = self._add_bias(X)
 
         if self.solver == "GD":
