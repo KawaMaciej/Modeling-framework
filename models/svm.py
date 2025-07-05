@@ -3,6 +3,7 @@ import numpy as np
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 
+
 class SVMClassificator:
     def __init__(self,
                  n_iter: int = 1000,
@@ -44,6 +45,8 @@ class SVMClassificator:
             raise ValueError("Unsupported kernel")
     
     def fit(self,X,y):
+        if len(np.unique(y)) != 2: 
+            print("Svm model should be used with two classes, use One vs All approach for multicalss problems.")
         y = 2 * y - 1
         self.X = X
         self.y = y

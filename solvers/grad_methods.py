@@ -1,44 +1,60 @@
 import numpy as np
 import torch
 
-def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000):
-    x = torch.tensor(init_x, requires_grad=True)
-    for _ in range(n_iter):
+def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4):
+    x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
+    prev_loss = float("inf")
+
+    for i in range(n_iter):
         y = func(x)
+        loss_val = y.item()
         y.backward()
+
         with torch.no_grad():
             x -= learning_rate * x.grad
         x.grad.zero_()
+
+        if abs(prev_loss - loss_val) < tol:
+            print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
+            break
+        prev_loss = loss_val
+
     return x.detach().cpu().numpy()
 
 
-def LBFGS(fn, X, lr=0.001, n_iter=100, m=10):
+def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4):
     history = []  
     alphas = []
     x = torch.tensor(X, dtype=torch.float64)
     x = x.view(-1)  
 
-    for _ in range(n_iter):
+    prev_loss = float('inf')
+
+    for i in range(n_iter):
         x.requires_grad_(True)
         x_prev = x.clone().detach()
 
         y = fn(x)
+        loss_val = y.item()
         y.backward()
+
+        if abs(prev_loss - loss_val) < tol:
+            print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
+            break
+        prev_loss = loss_val
 
         with torch.no_grad():
             x -= lr * x.grad
 
         sk = (x - x_prev).detach()
-
         gk = torch.autograd.grad(fn(x), x, create_graph=False)[0].detach()
 
-        if _ == 0:
+        if i == 0:
             g_prev = gk
             x.grad.zero_()
             continue
 
         yk = (gk - g_prev).detach()
-
         rho = 1 / torch.dot(yk, sk)
 
         if len(history) == m:
@@ -66,7 +82,7 @@ def LBFGS(fn, X, lr=0.001, n_iter=100, m=10):
 
         g_prev = gk
         x.grad.zero_()
-        
+
     return x.detach().cpu().numpy()
 
 
