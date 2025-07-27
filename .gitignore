@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+```// filepath: c:\Users\kawam\OneDrive\Pulpit\repo\Modeling-framework\.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
