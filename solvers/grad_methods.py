@@ -8,19 +8,35 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4):
     for i in range(n_iter):
         y = func(x)
         loss_val = y.item()
+
+        if torch.isnan(y):
+            print(f"NaN encountered in loss at iteration {i}.")
+            break
+
         y.backward()
 
+        if x.grad is None or torch.isnan(x.grad).any():
+            print(f"NaN encountered in gradients at iteration {i}.")
+            break
+
         with torch.no_grad():
-            x -= learning_rate * x.grad
-        x.grad.zero_()
+            torch.nn.utils.clip_grad_norm_([x], max_norm=1.0)
+            x = x - learning_rate * x.grad
+
+        # Re-enable gradient tracking
+        x.requires_grad_(True)
+
+        # Clear previous gradients (only if available)
+        if x.grad is not None:
+            x.grad.zero_()
 
         if abs(prev_loss - loss_val) < tol:
             print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
             break
+
         prev_loss = loss_val
 
     return x.detach().cpu().numpy()
-
 
 def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4):
     history = []  

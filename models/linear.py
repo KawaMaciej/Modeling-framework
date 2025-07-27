@@ -6,10 +6,10 @@ from tests.Breusch_Pagan import Breusch_Pagan
 from tests.DurbinWatson_test import DurbinWatson
 from scipy import stats
 from tabulate import tabulate
-import jax.numpy as jnp
-from jax import grad, jit
+import torch
 from sklearn.model_selection import KFold
 from metrics.regression_metrics import *
+from solvers.grad_methods import GradientDescent
 
 class LinearRegression:
     """
@@ -17,7 +17,7 @@ class LinearRegression:
     Includes diagnostics like residual plots, assumption checks, and error metrics.
     """
 
-    def __init__(self, regularization: str = "None", alpha: float = 0.1, n_iter: int = 1000, lr: float = 0.0001) -> None:
+    def __init__(self, regularization: str="None", alpha: float=0.1, n_iter: int=1000, lr: float=0.0001, tol=1e-4) -> None:
         """
         Initialize the LinearRegression model.
 
@@ -33,11 +33,12 @@ class LinearRegression:
             Learning rate for Lasso gradient descent.
         """
         self.regularization = regularization
-        self.beta: NDArray | None = None
+        self.beta = 0
         self.feature_names: list | None = None
         self.alpha: NDArray | None = None
         self.n_iter: NDArray | None = None
         self.lr: NDArray | None = None
+        self.tol = tol
         if self.regularization  == "Lasso":
             self.alpha = alpha
             self.n_iter = n_iter
@@ -70,57 +71,66 @@ class LinearRegression:
         LinearRegression
             The fitted model instance.
         """
+
+                
+        self.X = X
+        self.Y = Y
+
+        
         if X.ndim == 1:
             X = X.reshape(-1, 1)
         if hasattr(X, 'columns'):
             self.feature_names = X.columns.tolist()
         else:
             self.feature_names = [f'x{i}' for i in range(X.shape[1])]
-        self.X = np.asarray(X)
-        self.Y = np.asarray(Y)
 
-        is_numeric = np.issubdtype(self.X.dtype, np.number)
+
+        is_numeric = np.issubdtype(X.dtype, np.number)
         if is_numeric == False:
             raise ValueError("Data is not numerical.")
 
-        x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
 
-        def _loss(weights: jnp.ndarray, arg: jnp.ndarray, y: jnp.ndarray) -> float:
+        def _loss(weights) -> torch.Tensor:
             """
-            Lasso loss: MSE + L1 penalty
+            Lasso loss: MSE + L1 regularization
             """
-            y_pred = arg @ weights
-            mse = jnp.mean((y - y_pred) ** 2)
-            l1 = self.alpha * jnp.sum(jnp.abs(weights[1:])) 
+            y_pred = X @ weights
+            mse = torch.mean((Y - y_pred) ** 2)
+            l1 = self.alpha * torch.sum(torch.abs(weights[1:]))  # Exclude bias
             return mse + l1
-        def _elastic_loss(weights: jnp.ndarray, arg: jnp.ndarray, y: jnp.ndarray) -> float:
-            l2 = (1-self.alpha) *jnp.sum(weights[1:]**2)
-            return _loss(weights, arg, y) + l2
+
+        def _elastic_loss(weights) -> torch.Tensor:
+            """
+            Elastic Net loss: MSE + alpha * L1 + (1 - alpha) * L2
+            """
+            y_pred = X @ weights
+            mse = torch.mean((Y - y_pred) ** 2)
+            l1 = self.alpha * torch.sum(torch.abs(weights[1:]))
+            l2 = (1 - self.alpha) * torch.sum(weights[1:] ** 2)
+            return mse + l1 + l2
         
         if self.regularization =="None":
+            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
             self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y  
         
         if self.regularization =="Ridge":
+            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
             self.beta = np.linalg.pinv(x.T @ x + self.alpha * np.ones_like(x.T @ x) ) @ x.T @ Y
         
         if self.regularization =="Lasso":
-            loss_grad = jit(grad(_loss))
-            self.beta = jnp.zeros(x.shape[1])
+            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
+            X = torch.tensor(x, dtype=torch.float64)
+            Y = torch.tensor(self.Y, dtype=torch.long) 
 
-            for _ in range(self.n_iter):
-                grads = loss_grad(self.beta, x, self.Y)
-                self.beta -= self.lr * grads
-            if np.any(np.isnan(self.beta)):
-                raise ValueError("Gradient explosion, please change learning rate")
+            self.beta = np.zeros(self.X.shape[1]+1)
+            self.beta = GradientDescent(_loss, self.beta, self.lr, self.n_iter, self.tol)
             
         if self.regularization =="ElasticNet":
-            loss_grad = jit(grad(_elastic_loss))
-            self.beta = jnp.zeros(x.shape[1])
-            for _ in range(self.n_iter):
-                grads = loss_grad(self.beta, x, self.Y)
-                self.beta -= self.lr * grads
-            if np.any(np.isnan(self.beta)):
-                raise ValueError("Gradient explosion, please change learning rate")
+            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
+            X = torch.tensor(x, dtype=torch.float64)
+            Y = torch.tensor(self.Y, dtype=torch.long)
+            self.beta = np.zeros(self.X.shape[1]+1)
+            self.beta = GradientDescent(_elastic_loss, self.beta, self.lr, self.n_iter, self.tol)
             
         return self
 
@@ -138,15 +148,18 @@ class LinearRegression:
         NDArray
             Predicted values.
         """
-
         if self.beta is None:
             raise ValueError("Model is not fitted yet.")
         
         if X.ndim == 1:
             X = X.reshape(-1, 1)
-        if X.shape[1] + 1 == self.beta.shape[0]: 
-            X = np.c_[np.ones((X.shape[0], 1)), X]
-        return X @ self.beta
+
+        X_with_bias = np.c_[np.ones((X.shape[0], 1)), X]
+
+        if X_with_bias.shape[1] != self.beta.shape[0]:
+            raise ValueError(f"Shape mismatch: X has {X_with_bias.shape[1]} features, but beta has {self.beta.shape[0]} weights.")
+
+        return X_with_bias @ self.beta
 
     def score(self, X: NDArray, Y: NDArray) -> float:
         """
@@ -526,7 +539,7 @@ class LinearRegression:
 
         print(tabulate(table, headers=['Metric', 'Value'], tablefmt='fancy_grid'))
     
-    def do_all(self, X:NDArray, Y:NDArray, k: int=5, random_state: int=42) -> None:
+    def do_all(self, X:NDArray, Y:NDArray, k: int=5, random_state: int=42, plot=True) -> None:
         preds = self.predict(X)
         print(f"Model score:{self.score(X, Y)}")
         print(f"R adjusted:{self.r_adjusted(X, Y)}")
@@ -534,8 +547,9 @@ class LinearRegression:
         print(f"Cross validation score: {self.cross_validate(X, Y, k=k, random_state=random_state )}")
         self.run_assumptions(X,Y)
         self.print_errors(Y, preds)
-        self.plot(X, Y)
-        self.plot_residuals(X, Y)
+        if plot:
+            self.plot(X, Y)
+            self.plot_residuals(X, Y)
         
 
     def cross_validate(self, X: NDArray, Y: NDArray, k: int = 5, random_state: int = 42) -> dict:
