@@ -16,7 +16,7 @@ class OVA:
             if hasattr(model, "decision_function"):
                 y_binary = np.where(Y == cls, 1, -1) 
                 self.use_neg1_pos1 = True
-            elif hasattr(model, "predict_proba"):
+            elif hasattr(model, "cross_entropy"):
                 y_binary = np.where(Y == cls, 1, 0) 
                 self.use_neg1_pos1 = False
             elif hasattr(model, "_best_split"):

@@ -89,6 +89,12 @@ class SVMClassificator:
     def predict(self, X):
         return (np.sign(self.decision_function(X)) + 1)/2
     
+    def predict_proba(self, X):
+        decision = self.decision_function(X)
+        proba_1 = 1 / (1 + np.exp(-decision))
+        proba_0 = 1 - proba_1
+        return np.vstack([proba_0, proba_1]).T
+    
     def decision_function(self, X):
         return (self.alpha * self.y).dot(self.compute_kernel(self.X, X)) + self.b
 
