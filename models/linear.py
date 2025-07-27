@@ -35,6 +35,9 @@ class LinearRegression:
         self.regularization = regularization
         self.beta: NDArray | None = None
         self.feature_names: list | None = None
+        self.alpha: NDArray | None = None
+        self.n_iter: NDArray | None = None
+        self.lr: NDArray | None = None
         if self.regularization  == "Lasso":
             self.alpha = alpha
             self.n_iter = n_iter

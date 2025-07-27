@@ -1,43 +1,42 @@
 import numpy as np
 from numpy.typing import NDArray
 from models.logistic import LogisticRegression
+from typing import Any
+from copy import deepcopy
 
 class OVA:
-    def __init__(self,
-        n_iter: int = 1000,
-        lr: float = 0.001,
-        regularization: str = "None",
-        alpha: float = 0.2
-    ) -> None:
-
-        valid_regularizations = {"None", "l1", "l2"}
-        if regularization not in valid_regularizations:
-            raise ValueError(f"regularization must be one of {valid_regularizations}, got '{regularization}'")
-        
-        self.n_iter = n_iter
-        self.lr = lr
-
-        self.regularization = regularization
-        self.alpha = alpha if regularization in {"l1", "l2"} else 0.0
+    def __init__(self, model_instance: Any) -> None:
+        self.model_instance = model_instance
 
     def fit(self, X: NDArray, Y: NDArray) -> "OVA":
-        data = []
-        for i in np.unique(Y):
-            data.append((Y == i).astype(int))
         self.models = []
-        for i in data:
-            self.models.append(LogisticRegression(X.shape[1], 
-                                             2, 
-                                             regularization=self.regularization,
-                                             n_iter=self.n_iter,
-                                             lr = self.lr,
-                                             alpha = self.alpha
-                                             ).fit(X, i))
+        self.classes = np.unique(Y)
+        for cls in self.classes:
+            model = deepcopy(self.model_instance)
+            if hasattr(model, "decision_function"):
+                y_binary = np.where(Y == cls, 1, -1) 
+                self.use_neg1_pos1 = True
+            elif hasattr(model, "cross_entropy"):
+                y_binary = np.where(Y == cls, 1, 0) 
+                self.use_neg1_pos1 = False
+            elif hasattr(model, "_best_split"):
+                y_binary = np.where(Y == cls, 1, 0) 
+                self.use_neg1_pos1 = False
+            else:
+                raise ValueError("Model must support either `decision_function`, `predict_proba` or `_best_split`")
+            
+            model.fit(X, y_binary)
+            self.models.append(model)
         return self
-    
+
     def predict(self, X: NDArray) -> NDArray:
-        preds = []
-        for model in self.models:
-            preds.append(model.predict_proba(X))
-        preds = np.array(preds)
-        return preds[:,:,1].argmax(axis=0)
+        if hasattr(self.model_instance, "decision_function"):
+            scores = np.array([model.decision_function(X) for model in self.models])
+        elif hasattr(self.model_instance, "predict_proba"):
+            scores = np.array([model.predict(X) for model in self.models]) 
+        elif hasattr(self.model_instance, "_best_split"):
+            scores = np.array([model.predict(X) for model in self.models]) 
+        else:
+            raise ValueError("Model must support either `decision_function` or `predict_proba`")
+        
+        return self.classes[np.argmax(scores, axis=0)]
