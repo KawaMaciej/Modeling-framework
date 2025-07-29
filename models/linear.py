@@ -9,7 +9,7 @@ from tabulate import tabulate
 import torch
 from sklearn.model_selection import KFold
 from metrics.regression_metrics import *
-from solvers.grad_methods import GradientDescent
+from solvers.grad_methods import GradientDescent, LBFGS, AdaBeliefOptimizer
 
 class LinearRegression:
     """
@@ -17,7 +17,15 @@ class LinearRegression:
     Includes diagnostics like residual plots, assumption checks, and error metrics.
     """
 
-    def __init__(self, regularization: str="None", alpha: float=0.1, n_iter: int=1000, lr: float=0.0001, tol=1e-4) -> None:
+    def __init__(self, 
+                 regularization: str="None", 
+                 alpha: float=0.1, 
+                 n_iter: int=1000, 
+                 lr: float=0.0001,
+                 weight_decay: float=0.0,
+                 tol=1e-4, 
+                 method="LBFGS", 
+                 verbose=True) -> None:
         """
         Initialize the LinearRegression model.
 
@@ -39,6 +47,9 @@ class LinearRegression:
         self.n_iter: NDArray | None = None
         self.lr: NDArray | None = None
         self.tol = tol
+        self.method = method
+        self.verbose = verbose
+        self.weight_decay = weight_decay
         if self.regularization  == "Lasso":
             self.alpha = alpha
             self.n_iter = n_iter
@@ -76,7 +87,7 @@ class LinearRegression:
         self.X = X
         self.Y = Y
 
-        
+
         if X.ndim == 1:
             X = X.reshape(-1, 1)
         if hasattr(X, 'columns'):
@@ -96,7 +107,8 @@ class LinearRegression:
             """
             y_pred = X @ weights
             mse = torch.mean((Y - y_pred) ** 2)
-            l1 = self.alpha * torch.sum(torch.abs(weights[1:]))  # Exclude bias
+            eps = 1e-4
+            l1= self.alpha * torch.sum(torch.sqrt(weights[1:]**2 + eps))
             return mse + l1
 
         def _elastic_loss(weights) -> torch.Tensor:
@@ -105,7 +117,8 @@ class LinearRegression:
             """
             y_pred = X @ weights
             mse = torch.mean((Y - y_pred) ** 2)
-            l1 = self.alpha * torch.sum(torch.abs(weights[1:]))
+            eps = 1e-4
+            l1= self.alpha * torch.sum(torch.sqrt(weights[1:]**2 + eps))
             l2 = (1 - self.alpha) * torch.sum(weights[1:] ** 2)
             return mse + l1 + l2
         
@@ -123,15 +136,34 @@ class LinearRegression:
             Y = torch.tensor(self.Y, dtype=torch.long) 
 
             self.beta = np.zeros(self.X.shape[1]+1)
-            self.beta = GradientDescent(_loss, self.beta, self.lr, self.n_iter, self.tol)
-            
+
+            if self.method=="GD":
+                self.beta = GradientDescent(_loss, self.beta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
+            if self.method=="LBFGS":
+                self.beta = LBFGS(_loss, self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, verbose=self.verbose)
+            if self.method=="ADABelief":
+                self.beta = AdaBeliefOptimizer(_loss, 
+                                               init_x = self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
+                                               verbose=self.verbose,
+                                               weight_decay = self.weight_decay
+                                               )
+
         if self.regularization =="ElasticNet":
             x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
             X = torch.tensor(x, dtype=torch.float64)
             Y = torch.tensor(self.Y, dtype=torch.long)
             self.beta = np.zeros(self.X.shape[1]+1)
-            self.beta = GradientDescent(_elastic_loss, self.beta, self.lr, self.n_iter, self.tol)
-            
+
+            if self.method=="GD":
+                self.beta = GradientDescent(_elastic_loss, self.beta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
+            if self.method=="LBFGS":
+                self.beta = LBFGS(_elastic_loss, self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, verbose=self.verbose)
+            if self.method=="ADABelief":
+                self.beta = AdaBeliefOptimizer(_elastic_loss, 
+                                               init_x = self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
+                                               verbose=self.verbose, 
+                                               weight_decay = self.weight_decay
+                                               )
         return self
 
     def predict(self, X: NDArray) -> NDArray:

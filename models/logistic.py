@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 from metrics.classification_metrics import *
 import torch
-from solvers.grad_methods import GradientDescent, LBFGS
+from solvers.grad_methods import GradientDescent, LBFGS, AdaBeliefOptimizer
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 class LogisticRegression:
@@ -21,7 +21,7 @@ class LogisticRegression:
         regularization (str): One of {'None', 'l1', 'l2', 'elastic_net'}.
         l1_ratio (float): L1 regularization strength.
         l2_ratio (float): L2 regularization strength.
-        solver (str): Optimization algorithm, either 'GD' or 'LBFGS'.
+        solver (str): Optimization algorithm, either 'GD', 'LBFGS', 'ADABelief' .
         m (int): History size for LBFGS.
         random_state (int): Seed for reproducibility.
         tol (float): Tolerance for convergence (Δ loss threshold).
@@ -36,13 +36,15 @@ class LogisticRegression:
         n_classes: int,
         n_iter: int = 1000,
         lr: float = 0.001,
+        weight_decay: float = 0.0,
         regularization: str = "None",
         l1_ratio: float = 0.5,
         l2_ratio: float = 0.5,
         solver: str = "GD",
         m: int = 10,
         random_state: int = 0,
-        tol: float = 1e-4
+        tol: float = 1e-4, 
+        verbose = True
     ) -> None:
 
         valid_regularizations = {"None", "l1", "l2", "elastic_net"}
@@ -56,18 +58,25 @@ class LogisticRegression:
         limit = np.sqrt(6 / (self.n_features + self.n_classes))
         self.theta = np.random.uniform(-limit, limit, size=(self.n_features + 1, self.n_classes))
 
-        self.tol = tol
+        self.verbose = verbose
         self.solver = solver
-        valid_solvers = {"GD", "LBFGS"}
+        valid_solvers = {"GD", "LBFGS", "ADABelief"}
         if solver not in valid_solvers:
             raise ValueError(f"Solver must be one of {valid_solvers}, got '{solver}'")
         if solver == "GD":
             self.n_iter = n_iter
             self.lr = lr
+            self.tol = tol
         if solver == "LBFGS":
             self.n_iter = n_iter
             self.lr = lr
             self.m = m
+            self.tol = tol
+        if solver == "ADABelief":
+            self.n_iter = n_iter
+            self.lr = lr
+            self.weight_decay = weight_decay
+            self.tol = tol
 
         self.regularization = regularization
         self.l1_ratio = l1_ratio if regularization in {"l1","elastic_net"} else 0.0
@@ -133,9 +142,16 @@ class LogisticRegression:
         self.X_bias = self._add_bias(X)
 
         if self.solver == "GD":
-            self.theta = GradientDescent(self.cross_entropy, self.theta, self.lr, self.n_iter, self.tol)
+            self.theta = GradientDescent(self.cross_entropy, self.theta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
         elif self.solver == "LBFGS":
-            self.theta = LBFGS(self.cross_entropy, self.theta, self.lr, self.n_iter, self.m, self.tol)
+            self.theta = LBFGS(self.cross_entropy, self.theta, self.lr, self.n_iter, self.m, self.tol, verbose=self.verbose)
+        elif self.solver == "ADABelief":
+            self.theta = AdaBeliefOptimizer(self.cross_entropy, 
+                                               init_x=self.theta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
+                                               verbose=self.verbose,
+                                               weight_decay = self.weight_decay
+                                               )
+
 
         return self
 

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4):
+def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, verbose=True):
     x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
     prev_loss = float("inf")
 
@@ -23,14 +23,12 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4):
             torch.nn.utils.clip_grad_norm_([x], max_norm=1.0)
             x = x - learning_rate * x.grad
 
-        # Re-enable gradient tracking
         x.requires_grad_(True)
 
-        # Clear previous gradients (only if available)
         if x.grad is not None:
             x.grad.zero_()
 
-        if abs(prev_loss - loss_val) < tol:
+        if abs(prev_loss - loss_val) < tol and verbose:
             print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
             break
 
@@ -38,7 +36,7 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4):
 
     return x.detach().cpu().numpy()
 
-def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4):
+def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4, verbose=True):
     history = []  
     alphas = []
     x = torch.tensor(X, dtype=torch.float64)
@@ -54,7 +52,7 @@ def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4):
         loss_val = y.item()
         y.backward()
 
-        if abs(prev_loss - loss_val) < tol:
+        if abs(prev_loss - loss_val) < tol and verbose:
             print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
             break
         prev_loss = loss_val
@@ -121,3 +119,60 @@ def wolfe_line_search(fn, x, p, g, alpha_init=1.0, c1=1e-4, c2=0.9, max_iter=20)
         else:
             break
     return alpha
+
+
+
+
+
+
+def AdaBeliefOptimizer(func, init_x, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
+                       n_iter=1000, tol=1e-4, weight_decay=0.0, verbose=True):
+    x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
+
+    m = torch.zeros_like(x) 
+    s = torch.zeros_like(x)  
+    prev_loss = float('inf')
+
+    for i in range(1, n_iter + 1):
+        y = func(x)
+        loss_val = y.item()
+
+        if torch.isnan(y):
+            print(f"NaN in loss at iteration {i}.")
+            break
+
+        y.backward()
+
+        if x.grad is None or torch.isnan(x.grad).any():
+            print(f"NaN in gradients at iteration {i}.")
+            break
+
+        g = x.grad.detach()
+
+        if weight_decay > 0:
+            g = g + weight_decay * x
+
+        m = betas[0] * m + (1 - betas[0]) * g
+        g_diff = g - m
+        s = betas[1] * s + (1 - betas[1]) * (g_diff ** 2)
+
+        m_hat = m / (1 - betas[0] ** i)
+        s_hat = s / (1 - betas[1] ** i)
+
+        update = lr * m_hat / (s_hat.sqrt() + eps)
+
+        with torch.no_grad():
+            x -= update
+
+        x.requires_grad_(True)
+
+        if x.grad is not None:
+            x.grad.zero_()
+
+        if abs(prev_loss - loss_val) < tol and verbose:
+            print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
+            break
+
+        prev_loss = loss_val
+
+    return x.detach().cpu().numpy()

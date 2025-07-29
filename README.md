@@ -1,8 +1,7 @@
 # 🧠 Modeling Framework
 
-**Branch:** `Implementing-modular-methods`
+A modular and extensible Python framework for building and experimenting with machine learning models — including custom implementations of linear regression, Lasso, Ridge, and ElasticNet using gradient descent and many others.
 
-A modular and extensible Python framework for building and experimenting with machine learning models — including custom implementations of linear regression, Lasso, Ridge, and ElasticNet using gradient descent.
 
 ---
 
@@ -76,7 +75,14 @@ A modular and extensible Python framework for building and experimenting with ma
 Modeling-framework/
 │
 ├── models/
-│   └── (....)             
+│   └── linear.py
+│   └── logistic.py
+│   └── svm.py
+│   └── decision_trees.py
+│   └── bagging.py
+│   └── votingclassifier.py
+│   └── onevsall.py
+│   └── onevsone.py           
 ├── metrics/
 │   └── regression_metrics.py   
 │   └── classification_metrics.py

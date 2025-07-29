@@ -50,9 +50,7 @@ class SVMClassificator:
         y = 2 * y - 1
         self.X = X
         self.y = y
-        np.random.seed(42)
-        
-        self.alpha = np.random.random(X.shape[0])
+        self.alpha = np.zeros(X.shape[0])
         self.b = 0
         self.ones = np.ones(X.shape[0]) 
 
@@ -116,3 +114,6 @@ class SVMClassificator:
         ax.contour(XX, YY, Z, levels=[-1, 0, 1],linestyles=['--', '-', '--'])
         plt.title(title)
         plt.show()
+
+
+
