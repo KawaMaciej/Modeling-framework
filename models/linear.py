@@ -49,7 +49,10 @@ class LinearRegression:
         self.alpha = alpha
         self.n_iter = n_iter
         self.lr = lr
+    def __call__(self):
 
+        return self
+    
     def __repr__(self) -> str:
         """
         Return a string representation of the model.
@@ -95,7 +98,7 @@ class LinearRegression:
             raise ValueError("Data is not numerical.")
 
 
-        def _loss(weights) -> torch.Tensor:
+        def _lasso_loss(weights) -> torch.Tensor:
             """
             Lasso loss: MSE + L1 regularization
             """
@@ -118,55 +121,48 @@ class LinearRegression:
         
         if self.regularization =="None":
             x = np.c_[np.ones((self.X.shape[0], 1)), X]
-            if sample_weight == None:
-                self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y
-            else:
+
+            if sample_weight is not None:
                 W = np.diag(self.sample_weight) 
                 self.beta = np.linalg.pinv(x.T @ W @ x) @ x.T @ W @ Y 
+            else:
+                self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y
+
         
         if self.regularization == "Ridge":
             x = np.c_[np.ones((self.X.shape[0], 1)), X]
-            if sample_weight == None:
-                self.beta = np.linalg.pinv(x.T @ x + np.eye(x.shape[1])) @ x.T @ Y
-            else:
+
+            if sample_weight is not None:
                 W = np.diag(self.sample_weight)
                 reg_matrix = self.alpha * np.eye(x.shape[1])
                 self.beta = np.linalg.pinv(x.T @ W @ x + reg_matrix) @ x.T @ W @ Y
-                
-        if self.regularization =="Lasso":
+            else:
+                self.beta = np.linalg.pinv(x.T @ x + np.eye(x.shape[1])) @ x.T @ Y
+
+        elif self.regularization in {"Lasso", "ElasticNet"}: 
             x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
             X = torch.tensor(x, dtype=torch.float64)
             Y = torch.tensor(self.Y, dtype=torch.long) 
-
+            loss_fn = _lasso_loss if self.regularization == "Lasso" else _elastic_loss
             self.beta = np.zeros(self.X.shape[1]+1)
+            optimizers = {
+            "GD": GradientDescent,
+            "LBFGS": LBFGS,
+            "ADABelief": AdaBeliefOptimizer
+            }
+            opt_func = optimizers.get(self.method)
+            if opt_func is None:
+                raise ValueError(f"Unknown optimization method: {self.method}")
 
-            if self.method=="GD":
-                self.beta = GradientDescent(_loss, self.beta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
-            if self.method=="LBFGS":
-                self.beta = LBFGS(_loss, self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, verbose=self.verbose)
-            if self.method=="ADABelief":
-                self.beta = AdaBeliefOptimizer(_loss, 
-                                               init_x = self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
-                                               verbose=self.verbose,
-                                               weight_decay = self.weight_decay
-                                               )
-
-        if self.regularization =="ElasticNet":
-            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
-            X = torch.tensor(x, dtype=torch.float64)
-            Y = torch.tensor(self.Y, dtype=torch.long)
-            self.beta = np.zeros(self.X.shape[1]+1)
-
-            if self.method=="GD":
-                self.beta = GradientDescent(_elastic_loss, self.beta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
-            if self.method=="LBFGS":
-                self.beta = LBFGS(_elastic_loss, self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, verbose=self.verbose)
-            if self.method=="ADABelief":
-                self.beta = AdaBeliefOptimizer(_elastic_loss, 
-                                               init_x = self.beta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
-                                               verbose=self.verbose, 
-                                               weight_decay = self.weight_decay
-                                               )
+            self.beta = opt_func(
+                loss_fn,
+                init_x=self.beta,
+                lr=self.lr,
+                n_iter=self.n_iter,
+                tol=self.tol,
+                verbose=self.verbose,
+                **({"weight_decay": self.weight_decay} if self.method == "ADABelief" else {})
+            )
         return self
 
     def predict(self, X: NDArray) -> NDArray:

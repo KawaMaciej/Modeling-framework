@@ -160,63 +160,93 @@ class DecisionTreeRegressor:
         self.min_samples_split = min_samples_split
         self.root = None
 
-    def fit(self, X, y):
-        self.root = self._build_tree(X, y)
+    def __call__(self):
+        return self
+
+    def fit(self, X, y, sample_weight=None):
+        if sample_weight is None:
+            sample_weight = np.ones_like(y, dtype=float)
+        self.root = self._build_tree(X, y, sample_weight, depth=0)
         return self
 
     def predict(self, X):
-        return np.array([self._traverse_tree(x, self.root) for x in X])
+        return np.array([self._traverse_tree_iterative(x, self.root) for x in X])
 
-    def _mse(self, y):
+    def _traverse_tree_iterative(self, x, node):
+        while not node.is_leaf_node():
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        return node.value
+
+    def _weighted_mse(self, y, sample_weight):
         if len(y) == 0:
             return 0
-        mean = np.mean(y)
-        return np.mean((y - mean) ** 2)
+        mean = np.average(y, weights=sample_weight)
+        return np.average((y - mean) ** 2, weights=sample_weight)
 
-    def _best_split(self, X, y):
+    def _best_split(self, X, y, sample_weight):
         best_mse = float('inf')
         best_feature, best_threshold = None, None
         n_samples, n_features = X.shape
 
         for feature in range(n_features):
-            thresholds = np.unique(X[:, feature])
-            for threshold in thresholds:
-                left_idx = X[:, feature] <= threshold
-                right_idx = X[:, feature] > threshold
-                if np.sum(left_idx) < self.min_samples_split or np.sum(right_idx) < self.min_samples_split:
+            sorted_idx = np.argsort(X[:, feature])
+            X_f = X[sorted_idx, feature]
+            y_f = y[sorted_idx]
+            w_f = sample_weight[sorted_idx]
+
+            sum_w = np.cumsum(w_f)
+            sum_y = np.cumsum(y_f * w_f)
+            sum_y2 = np.cumsum((y_f ** 2) * w_f)
+
+            total_weight = sum_w[-1]
+            total_y = sum_y[-1]
+            total_y2 = sum_y2[-1]
+
+            for i in range(1, n_samples):
+                if X_f[i] == X_f[i - 1]:
                     continue
 
-                y_left, y_right = y[left_idx], y[right_idx]
-                mse = (len(y_left) * self._mse(y_left) + len(y_right) * self._mse(y_right)) / len(y)
+                w_left = sum_w[i - 1]
+                y_left = sum_y[i - 1]
+                y2_left = sum_y2[i - 1]
+
+                w_right = total_weight - w_left
+                y_right = total_y - y_left
+                y2_right = total_y2 - y2_left
+
+                if w_left < self.min_samples_split or w_right < self.min_samples_split:
+                    continue
+
+                mse_left = (y2_left / w_left) - (y_left / w_left) ** 2
+                mse_right = (y2_right / w_right) - (y_right / w_right) ** 2
+
+                mse = (w_left * mse_left + w_right * mse_right) / total_weight
 
                 if mse < best_mse:
                     best_mse = mse
                     best_feature = feature
-                    best_threshold = threshold
+                    best_threshold = (X_f[i] + X_f[i - 1]) / 2
 
         return best_feature, best_threshold
 
-    def _build_tree(self, X, y, depth=0):
+    def _build_tree(self, X, y, sample_weight, depth):
         if depth >= self.max_depth or len(y) < self.min_samples_split:
-            return Node(value=np.mean(y))
+            return Node(value=np.average(y, weights=sample_weight))
 
-        feature, threshold = self._best_split(X, y)
+        feature, threshold = self._best_split(X, y, sample_weight)
         if feature is None:
-            return Node(value=np.mean(y))
+            return Node(value=np.average(y, weights=sample_weight))
 
         left_idx = X[:, feature] <= threshold
         right_idx = X[:, feature] > threshold
-        left = self._build_tree(X[left_idx], y[left_idx], depth + 1)
-        right = self._build_tree(X[right_idx], y[right_idx], depth + 1)
-        return Node(feature=feature, threshold=threshold, left=left, right=right)
 
-    def _traverse_tree(self, x, node):
-        if node.is_leaf_node():
-            return node.value
-        if x[node.feature] <= node.threshold:
-            return self._traverse_tree(x, node.left)
-        else:
-            return self._traverse_tree(x, node.right)
+        left = self._build_tree(X[left_idx], y[left_idx], sample_weight[left_idx], depth + 1)
+        right = self._build_tree(X[right_idx], y[right_idx], sample_weight[right_idx], depth + 1)
+
+        return Node(feature=feature, threshold=threshold, left=left, right=right)
 
 
 

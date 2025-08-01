@@ -35,10 +35,10 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, ver
 
     return x.detach().cpu().numpy()
 
-def LBFGS(fn, X, lr=0.001, n_iter=100, m=10, tol=1e-4, verbose=True):
+def LBFGS(fn, init_x, lr=0.001, n_iter=100, m=10, tol=1e-4, verbose=True):
     history = []  
     alphas = []
-    x = torch.tensor(X, dtype=torch.float64)
+    x = torch.tensor(init_x, dtype=torch.float64)
     x = x.view(-1)  
 
     prev_loss = float('inf')
