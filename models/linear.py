@@ -41,32 +41,22 @@ class LinearRegression:
             Learning rate for Lasso gradient descent.
         """
         self.regularization = regularization
-        self.beta = 0
-        self.feature_names: list | None = None
-        self.alpha: NDArray | None = None
-        self.n_iter: NDArray | None = None
-        self.lr: NDArray | None = None
+        self.feature_names: list 
         self.tol = tol
         self.method = method
         self.verbose = verbose
         self.weight_decay = weight_decay
-        if self.regularization  == "Lasso":
-            self.alpha = alpha
-            self.n_iter = n_iter
-            self.lr = lr
-        if self.regularization  == "Ridge":
-            self.alpha = alpha
-        if self.regularization  == "ElasticNet":
-            self.alpha = alpha
-            self.n_iter = n_iter
-            self.lr = lr
+        self.alpha = alpha
+        self.n_iter = n_iter
+        self.lr = lr
+
     def __repr__(self) -> str:
         """
         Return a string representation of the model.
         """
         return f"{self.__class__.__name__}{ self.regularization}(fit_intercept=True)"
 
-    def fit(self, X: NDArray, Y: NDArray ) -> "LinearRegression":
+    def fit(self, X, Y, sample_weight=None) -> "LinearRegression":
         """
         Fit the linear regression model based on selected regularization.
 
@@ -86,7 +76,11 @@ class LinearRegression:
                 
         self.X = X
         self.Y = Y
-
+        self.sample_weight = (
+        np.asarray(sample_weight).flatten()
+        if sample_weight is not None
+        else np.ones(X.shape[0], dtype=np.float64)
+    )
 
         if X.ndim == 1:
             X = X.reshape(-1, 1)
@@ -123,13 +117,22 @@ class LinearRegression:
             return mse + l1 + l2
         
         if self.regularization =="None":
-            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
-            self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y  
+            x = np.c_[np.ones((self.X.shape[0], 1)), X]
+            if sample_weight == None:
+                self.beta = np.linalg.pinv(x.T @ x) @ x.T @ Y
+            else:
+                W = np.diag(self.sample_weight) 
+                self.beta = np.linalg.pinv(x.T @ W @ x) @ x.T @ W @ Y 
         
-        if self.regularization =="Ridge":
-            x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
-            self.beta = np.linalg.pinv(x.T @ x + self.alpha * np.ones_like(x.T @ x) ) @ x.T @ Y
-        
+        if self.regularization == "Ridge":
+            x = np.c_[np.ones((self.X.shape[0], 1)), X]
+            if sample_weight == None:
+                self.beta = np.linalg.pinv(x.T @ x + np.eye(x.shape[1])) @ x.T @ Y
+            else:
+                W = np.diag(self.sample_weight)
+                reg_matrix = self.alpha * np.eye(x.shape[1])
+                self.beta = np.linalg.pinv(x.T @ W @ x + reg_matrix) @ x.T @ W @ Y
+                
         if self.regularization =="Lasso":
             x = np.c_[np.ones((self.X.shape[0], 1)), self.X] 
             X = torch.tensor(x, dtype=torch.float64)

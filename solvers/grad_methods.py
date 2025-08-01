@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, verbose=True):

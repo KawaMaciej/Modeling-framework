@@ -32,8 +32,6 @@ class LogisticRegression:
 
     def __init__(
         self,
-        n_features: int,
-        n_classes: int,
         n_iter: int = 1000,
         lr: float = 0.001,
         weight_decay: float = 0.0,
@@ -50,13 +48,12 @@ class LogisticRegression:
         valid_regularizations = {"None", "l1", "l2", "elastic_net"}
         if regularization not in valid_regularizations:
             raise ValueError(f"regularization must be one of {valid_regularizations}, got '{regularization}'")
-        self.n_classes = n_classes
-        self.n_features = n_features
+        
+
         if random_state != 0: 
             np.random.seed(random_state)
 
-        limit = np.sqrt(6 / (self.n_features + self.n_classes))
-        self.theta = np.random.uniform(-limit, limit, size=(self.n_features + 1, self.n_classes))
+
 
         self.verbose = verbose
         self.solver = solver
@@ -81,7 +78,11 @@ class LogisticRegression:
         self.regularization = regularization
         self.l1_ratio = l1_ratio if regularization in {"l1","elastic_net"} else 0.0
         self.l2_ratio = l2_ratio if regularization in {"l2", "elastic_net"} else 0 
+        
+    def __call__(self):
 
+        return self
+    
     def softmax(self, X: NDArray) -> NDArray:
         """
         Compute softmax probabilities across classes.
@@ -102,21 +103,27 @@ class LogisticRegression:
 
     def cross_entropy(self, theta_flat: torch.Tensor) -> torch.Tensor:
         """
-        Compute the regularized cross-entropy loss.
+        Compute the regularized cross-entropy loss with optional sample weighting.
 
         Args:
-            theta_flat: Flattened parameter tensor (requires grad).
+            theta_flat: Flattened parameter tensor.
 
         Returns:
-            Scalar torch tensor representing the loss.
+            Weighted, regularized cross-entropy loss (scalar tensor).
         """
+
+
         X = torch.tensor(self.X_bias, dtype=torch.float64)
-        Y = torch.tensor(self.Y, dtype=torch.long) 
+        Y = torch.tensor(self.Y, dtype=torch.long)
+        weights = torch.tensor(self.sample_weight, dtype=torch.float64) if hasattr(self, 'sample_weight') else torch.ones_like(Y, dtype=torch.float64)
+
         theta = theta_flat.view(self.n_features + 1, self.n_classes)
+        logits = X @ theta  
+        log_probs = F.log_softmax(logits, dim=1)
 
-        logits = X @ theta 
-
-        loss = F.cross_entropy(logits, Y)
+        log_likelihood = log_probs[torch.arange(X.shape[0]), Y]
+        weighted_loss = -weights * log_likelihood
+        loss = weighted_loss.sum() / weights.sum()
 
         if self.regularization == "l2":
             loss += self.l2_ratio * torch.sum(theta[1:, :] ** 2)
@@ -124,9 +131,10 @@ class LogisticRegression:
             loss += self.l1_ratio * torch.sum(torch.abs(theta[1:, :]))
         elif self.regularization == "elastic_net":
             loss += self.l2_ratio * torch.sum(theta[1:, :] ** 2) + self.l1_ratio * torch.sum(torch.abs(theta[1:, :]))
+
         return loss
         
-    def fit(self, X: NDArray[np.float64], Y: NDArray[np.float64]) -> "LogisticRegression":
+    def fit(self, X: NDArray[np.float64], Y: NDArray[np.float64], sample_weight=None) -> "LogisticRegression":
         """
         Train the model using the selected solver.
 
@@ -137,8 +145,14 @@ class LogisticRegression:
         Returns:
             Self (fitted model).
         """
+        
+        self.n_features = X.shape[1]
+        self.n_classes = len(np.unique(Y)) if Y.ndim == 1 else Y.shape[1]
+        limit = np.sqrt(6 / (self.n_features + self.n_classes))
+        self.theta = np.random.uniform(-limit, limit, size=(self.n_features + 1, self.n_classes))
         self.Y = Y 
         self.X = X
+        self.sample_weight = sample_weight if sample_weight is not None else np.ones_like(Y, dtype=np.float64)
         self.X_bias = self._add_bias(X)
 
         if self.solver == "GD":

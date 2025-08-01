@@ -3,9 +3,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 class OVO:
-    def __init__(self, model_class, **model_args) -> None:
+    def __init__(self, model_class) -> None:
         self.model_class = model_class
-        self.model_args = model_args  
+        #self.model_args = model_args  
 
     def fit(self, X: NDArray, Y: NDArray):
         self.classes_ = np.unique(Y)
@@ -22,7 +22,7 @@ class OVO:
 
                 Y_binary = (Y_pair == class_j).astype(int)
 
-                model = self.model_class(**self.model_args)  
+                model = self.model_class
                 model.fit(X_pair, Y_binary)
 
                 self.models.append((model, (class_i, class_j)))

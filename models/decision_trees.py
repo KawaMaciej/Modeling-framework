@@ -1,18 +1,17 @@
-
-from collections import Counter
+from collections import Counter, defaultdict
 import numpy as np
+from typing import Optional, Dict, Any
+
 class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
+    def __init__(self, value=None, feature=None, threshold=None, left=None, right=None):
+        self.value = value
         self.feature = feature
         self.threshold = threshold
         self.left = left
         self.right = right
-        self.value = value
-        self.class_counts = None
-
+        self.class_counts: Optional[Dict[Any, Any]] = None
     def is_leaf_node(self):
         return self.left is None and self.right is None
-    
 
 class DecisionTreeClassifier:
     def __init__(self, max_depth=5, 
@@ -32,9 +31,9 @@ class DecisionTreeClassifier:
     def __call__(self):
 
         return self
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         self._classes = np.unique(y)
-        self.root = self._build_tree(X, y)
+        self.root = self._build_tree(X, y, sample_weight)
         return self
 
 
@@ -44,18 +43,27 @@ class DecisionTreeClassifier:
     def predict_proba(self, X):
         return np.array([self._traverse_proba(x, self.root) for x in X])
 
-    def _gini(self, y):
-        hist = Counter(y)
+    def _gini(self, y, sample_weight=None):
+        if sample_weight is None:
+            sample_weight = np.ones(len(y))
+
+        weight_per_class = defaultdict(float)
+        total_weight = np.sum(sample_weight)
+
+        for label, weight in zip(y, sample_weight):
+            weight_per_class[label] += weight
+
         impurity = 1.0
-        for label in hist:
-            prob_of_lbl = hist[label] / len(y)
+        for label in weight_per_class:
+            prob_of_lbl = weight_per_class[label] / total_weight
             impurity -= prob_of_lbl ** 2
+
         return impurity
 
-    def _best_split(self, X, y):
+    def _best_split(self, X, y, sample_weight):
         best_gain = -1
         best_feature, best_threshold = None, None
-        current_impurity = self._gini(y)
+        current_impurity = self._gini(y, sample_weight)
         feature_indices = np.arange(X.shape[1]) if self.max_features is None else \
             np.random.choice(X.shape[1], min(self.max_features, X.shape[1]), replace=False)
 
@@ -70,7 +78,7 @@ class DecisionTreeClassifier:
 
                 y_left, y_right = y[left_idx], y[right_idx]
                 p = len(y_left) / len(y)
-                gain = current_impurity - p * self._gini(y_left) - (1 - p) * self._gini(y_right)
+                gain = current_impurity - p * self._gini(y_left, sample_weight) - (1 - p) * self._gini(y_right, sample_weight)
 
                 if gain > best_gain:
                     best_gain = gain
@@ -79,7 +87,7 @@ class DecisionTreeClassifier:
 
         return best_feature, best_threshold
 
-    def _build_tree(self, X, y, depth=0):
+    def _build_tree(self, X, y, sample_weight, depth=0, ):
         num_samples_per_class = Counter(y)
         predicted_class = num_samples_per_class.most_common(1)[0][0]
         class_probs = self._normalize_counts(num_samples_per_class)
@@ -93,7 +101,7 @@ class DecisionTreeClassifier:
             leaf.class_counts = class_probs
             return leaf
 
-        feature, threshold = self._best_split(X, y)
+        feature, threshold = self._best_split(X, y, sample_weight)
         if feature is None:
             self._leaf_count += 1
             leaf = Node(value=predicted_class)
@@ -115,8 +123,8 @@ class DecisionTreeClassifier:
             leaf.class_counts = class_probs
             return leaf
 
-        left = self._build_tree(X[left_idx], y[left_idx], depth + 1)
-        right = self._build_tree(X[right_idx], y[right_idx], depth + 1)
+        left = self._build_tree(X[left_idx], y[left_idx], sample_weight, depth + 1)
+        right = self._build_tree(X[right_idx], y[right_idx], sample_weight, depth + 1)
 
         return Node(feature=feature, threshold=threshold, left=left, right=right)
 

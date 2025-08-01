@@ -13,18 +13,18 @@ class OVA:
         self.classes = np.unique(Y)
         for cls in self.classes:
             model = deepcopy(self.model_instance)
-            if hasattr(model, "decision_function"):
-                y_binary = np.where(Y == cls, 1, -1) 
-                self.use_neg1_pos1 = True
-            elif hasattr(model, "cross_entropy"):
-                y_binary = np.where(Y == cls, 1, 0) 
-                self.use_neg1_pos1 = False
-            elif hasattr(model, "_best_split"):
-                y_binary = np.where(Y == cls, 1, 0) 
-                self.use_neg1_pos1 = False
-            else:
-                raise ValueError("Model must support either `decision_function`, `predict_proba` or `_best_split`")
-            
+            #if hasattr(model, "decision_function"):
+            #    y_binary = np.where(Y == cls, 1, -1) 
+            #    self.use_neg1_pos1 = True
+            #elif hasattr(model, "cross_entropy"):
+            #    y_binary = np.where(Y == cls, 1, 0) 
+            #    self.use_neg1_pos1 = False
+            #elif hasattr(model, "_best_split"):
+            #    y_binary = np.where(Y == cls, 1, 0) 
+            #    self.use_neg1_pos1 = False
+            #else:
+            #    raise ValueError("Model must support either `decision_function`, `predict_proba` or `_best_split`")
+            y_binary = np.where(Y == cls, 1, 0)
             model.fit(X, y_binary)
             self.models.append(model)
         return self

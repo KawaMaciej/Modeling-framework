@@ -2,9 +2,8 @@ import numpy as np
 from scipy.stats import mode
 
 class BaggingClassifier:
-    def __init__(self, estimator, n_splits=4, soft_voting=False, replacement = True, random_state = 42, **model_args, ) -> None:
+    def __init__(self, estimator, n_splits=4, soft_voting=False, replacement = True, random_state = 42 ) -> None:
         self.n_splits = n_splits
-        self.model_args = model_args  
         self.estimator = estimator
         self.soft_voting= soft_voting
         self.replacement = replacement
@@ -21,7 +20,7 @@ class BaggingClassifier:
             X_sample = X[indices]
             Y_sample = Y[indices]
 
-            model = self.estimator(**self.model_args)
+            model = self.estimator
             model.fit(X_sample, Y_sample)
             self.models.append(model)
 
