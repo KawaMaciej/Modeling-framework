@@ -1,7 +1,10 @@
 import torch
 
-def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, verbose=True):
-    x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
+def GradientDescent(func, init_x, lr=0.01, n_iter=1000, tol=1e-4, verbose=True):
+    if isinstance(init_x, torch.Tensor):
+        x = init_x.clone().detach().requires_grad_(True)
+    else:
+        x = torch.from_numpy(init_x).double().clone().detach().requires_grad_(True)
     prev_loss = float("inf")
 
     for i in range(n_iter):
@@ -20,7 +23,7 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, ver
 
         with torch.no_grad():
             torch.nn.utils.clip_grad_norm_([x], max_norm=1.0)
-            x = x - learning_rate * x.grad
+            x = x - lr * x.grad
 
         x.requires_grad_(True)
 
@@ -38,8 +41,11 @@ def GradientDescent(func, init_x, learning_rate=0.01, n_iter=1000, tol=1e-4, ver
 def LBFGS(fn, init_x, lr=0.001, n_iter=100, m=10, tol=1e-4, verbose=True):
     history = []  
     alphas = []
-    x = torch.tensor(init_x, dtype=torch.float64)
-    x = x.view(-1)  
+    if isinstance(init_x, torch.Tensor):
+        x = init_x.clone().detach().requires_grad_(True)
+    else:
+        x = torch.tensor(init_x, dtype=torch.float64)
+        x = x.view(-1)  
 
     prev_loss = float('inf')
 
@@ -126,7 +132,11 @@ def wolfe_line_search(fn, x, p, g, alpha_init=1.0, c1=1e-4, c2=0.9, max_iter=20)
 
 def AdaBeliefOptimizer(func, init_x, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
                        n_iter=1000, tol=1e-4, weight_decay=0.0, verbose=True):
-    x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
+    
+    if isinstance(init_x, torch.Tensor):
+        x = init_x.clone().detach().requires_grad_(True)
+    else:
+        x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
 
     m = torch.zeros_like(x) 
     s = torch.zeros_like(x)  
@@ -170,6 +180,57 @@ def AdaBeliefOptimizer(func, init_x, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
 
         if abs(prev_loss - loss_val) < tol and verbose:
             print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
+            break
+
+        prev_loss = loss_val
+
+    return x.detach().cpu().numpy()
+
+
+
+def LionOptimizer(func, init_x, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
+                       n_iter=1000, tol=1e-4, weight_decay=0.0, verbose=True):
+    
+    if isinstance(init_x, torch.Tensor):
+        x = init_x.clone().detach().requires_grad_(True)
+    else:
+        x = torch.tensor(init_x, dtype=torch.float64, requires_grad=True)
+
+    m = torch.zeros_like(x) 
+    prev_loss = float('inf')
+
+    for i in range(1, n_iter + 1):
+        y = func(x)
+        loss_val = y.item()
+
+        if torch.isnan(y):
+            print(f"NaN in loss at iteration {i}.")
+            break
+
+        y.backward()
+
+        if x.grad is None or torch.isnan(x.grad).any():
+            print(f"NaN in gradients at iteration {i}.")
+            break
+
+        g = x.grad.detach()
+
+        if weight_decay > 0:
+            g = g + weight_decay * x.detach()
+
+        m = betas[0] * m + (1 - betas[0]) * g
+        update = lr * torch.sign(m)
+
+        with torch.no_grad():
+            x -= update
+
+        if x.grad is not None:
+            x.grad.zero_()
+        x = x.detach().requires_grad_(True)
+
+        if abs(prev_loss - loss_val) < tol:
+            if verbose:
+                print(f"Converged at iteration {i}, Δloss = {abs(prev_loss - loss_val):.6f}")
             break
 
         prev_loss = loss_val

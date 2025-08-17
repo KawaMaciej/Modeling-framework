@@ -9,7 +9,7 @@ from tabulate import tabulate
 import torch
 from sklearn.model_selection import KFold
 from metrics.regression_metrics import *
-from solvers.grad_methods import GradientDescent, LBFGS, AdaBeliefOptimizer
+from solvers.grad_methods import GradientDescent, LBFGS, AdaBeliefOptimizer, LionOptimizer
 
 class LinearRegression:
     """
@@ -39,6 +39,8 @@ class LinearRegression:
             Number of iterations for Lasso gradient descent.
         lr : float
             Learning rate for Lasso gradient descent.
+        solver (str): 
+            Optimization algorithm, either 'GD', 'LBFGS', 'ADABelief', 'Lion' .
         """
         self.regularization = regularization
         self.feature_names: list 
@@ -49,6 +51,13 @@ class LinearRegression:
         self.alpha = alpha
         self.n_iter = n_iter
         self.lr = lr
+        self.optimizers = {
+            "GD": GradientDescent,
+            "LBFGS": LBFGS,
+            "ADABelief": AdaBeliefOptimizer,
+            "Lion": LionOptimizer
+            }
+        
     def __call__(self):
 
         return self
@@ -145,12 +154,8 @@ class LinearRegression:
             Y = torch.tensor(self.Y, dtype=torch.long) 
             loss_fn = _lasso_loss if self.regularization == "Lasso" else _elastic_loss
             self.beta = np.zeros(self.X.shape[1]+1)
-            optimizers = {
-            "GD": GradientDescent,
-            "LBFGS": LBFGS,
-            "ADABelief": AdaBeliefOptimizer
-            }
-            opt_func = optimizers.get(self.method)
+
+            opt_func = self.optimizers.get(self.method)
             if opt_func is None:
                 raise ValueError(f"Unknown optimization method: {self.method}")
 

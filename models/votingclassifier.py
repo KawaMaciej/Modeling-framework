@@ -3,22 +3,31 @@ from scipy.stats import mode
 import numpy as np
 
 class VotingClassifier:
-    def __init__(self, estimators: List, soft_votting = False) -> None:
+    def __init__(self, estimators: List, soft_votting = False, trained = False) -> None:
 
         self.estimators = estimators
         self.soft_votting = soft_votting
+        self.trained = trained
 
     def voters(self):
         
         return self.estimators
     
     def fit(self, X, y):
-        self.predictors = []
-        for estimator in self.estimators:
-            estimator.fit(X,y)
-            self.predictors.append(estimator)
+        if self.trained:
+            self.predictors = []
+            for estimator in self.estimators:
+                self.predictors.append(estimator)
+            print("No need to fit")
+            return self
+        
+        else:
+            self.predictors = []
+            for estimator in self.estimators:
+                estimator.fit(X,y)
+                self.predictors.append(estimator)
 
-        return self
+            return self
     
     def predict(self, X):
         if not self.soft_votting:

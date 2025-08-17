@@ -117,3 +117,84 @@ class SVMClassificator:
 
 
 
+class SVMRegressor:
+    def __init__(self,
+                 n_iter: int = 1000,
+                 lr: float = 0.001,
+                 C: float = 1.0,
+                 epsilon: float = 0.1,
+                 kernel: str = "linear",
+                 degree: int = 2,
+                 r: float = 1.0,
+                 gamma: float = 0.5,
+                 tolerance: float = 1e-4):
+        
+        valid_kernels = {"linear", "sigmoid", "poly", "rbf"}
+        if kernel not in valid_kernels:
+            raise ValueError(f"kernel must be one of {valid_kernels}, got '{kernel}'")
+        
+        self.kernel = kernel
+        self.n_iter = n_iter
+        self.lr = lr
+        self.C = C
+        self.epsilon = epsilon
+        self.tolerance = tolerance
+
+        self.degree = degree
+        self.r = r
+        self.gamma = gamma
+
+    def compute_kernel(self, X1, X2):
+        if self.kernel == "linear":
+            return X1 @ X2.T
+        elif self.kernel == "poly":
+            return (X1 @ X2.T + self.r) ** self.degree
+        elif self.kernel == "sigmoid":
+            return np.tanh(self.gamma * (X1 @ X2.T) + self.r)
+        elif self.kernel == "rbf":
+            sq_dists = np.sum(X1**2, axis=1).reshape(-1, 1) + np.sum(X2**2, axis=1) - 2 * X1 @ X2.T
+            return np.exp(-self.gamma * sq_dists)
+
+    def fit(self, X, y):
+        self.X = X
+        self.y = y
+        n_samples = X.shape[0]
+        
+        self.alpha = np.zeros(n_samples)
+        self.alpha_star = np.zeros(n_samples)
+        K = self.compute_kernel(X, X)
+        prev_loss = None
+
+        for i in range(self.n_iter):
+            pred = (self.alpha - self.alpha_star) @ K + self.b if hasattr(self, 'b') else (self.alpha - self.alpha_star) @ K # type: ignore
+
+            error = pred - y
+            gradient_alpha = error + self.epsilon
+            gradient_alpha_star = -error + self.epsilon
+
+            self.alpha -= self.lr * gradient_alpha
+            self.alpha_star -= self.lr * gradient_alpha_star
+
+            self.alpha = np.clip(self.alpha, 0, self.C)
+            self.alpha_star = np.clip(self.alpha_star, 0, self.C)
+
+            loss = 0.5 * (self.alpha - self.alpha_star) @ K @ (self.alpha - self.alpha_star) + \
+                   self.epsilon * np.sum(self.alpha + self.alpha_star) - \
+                   np.sum((self.alpha - self.alpha_star) * y)
+
+            if prev_loss is not None and abs(loss - prev_loss) < self.tolerance:
+                print(f"Converged at iteration {i}")
+                break
+            prev_loss = loss
+
+        support_indices = np.where((self.alpha > 0) & (self.alpha < self.C))[0]
+        b_list = []
+        for i in support_indices:
+            pred_i = (self.alpha - self.alpha_star) @ K[i] # type: ignore
+            b_list.append(y[i] - pred_i)
+        self.b = np.mean(b_list) if b_list else 0
+        return self
+
+    def predict(self, X):
+        K = self.compute_kernel(self.X, X)
+        return (self.alpha - self.alpha_star) @ K + self.b # type: ignore

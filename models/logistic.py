@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 from metrics.classification_metrics import *
 import torch
-from solvers.grad_methods import GradientDescent, LBFGS, AdaBeliefOptimizer
+from solvers.grad_methods import *
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 class LogisticRegression:
@@ -21,7 +21,7 @@ class LogisticRegression:
         regularization (str): One of {'None', 'l1', 'l2', 'elastic_net'}.
         l1_ratio (float): L1 regularization strength.
         l2_ratio (float): L2 regularization strength.
-        solver (str): Optimization algorithm, either 'GD', 'LBFGS', 'ADABelief' .
+        solver (str): Optimization algorithm, either 'GD', 'LBFGS', 'ADABelief', 'Lion' .
         m (int): History size for LBFGS.
         random_state (int): Seed for reproducibility.
         tol (float): Tolerance for convergence (Δ loss threshold).
@@ -57,28 +57,22 @@ class LogisticRegression:
 
         self.verbose = verbose
         self.solver = solver
-        valid_solvers = {"GD", "LBFGS", "ADABelief"}
-        if solver not in valid_solvers:
-            raise ValueError(f"Solver must be one of {valid_solvers}, got '{solver}'")
-        if solver == "GD":
-            self.n_iter = n_iter
-            self.lr = lr
-            self.tol = tol
-        if solver == "LBFGS":
-            self.n_iter = n_iter
-            self.lr = lr
-            self.m = m
-            self.tol = tol
-        if solver == "ADABelief":
-            self.n_iter = n_iter
-            self.lr = lr
-            self.weight_decay = weight_decay
-            self.tol = tol
+        self.n_iter = n_iter
+        self.lr = lr
+        self.tol = tol
+        self.m = m
+        self.weight_decay = weight_decay
 
         self.regularization = regularization
         self.l1_ratio = l1_ratio if regularization in {"l1","elastic_net"} else 0.0
         self.l2_ratio = l2_ratio if regularization in {"l2", "elastic_net"} else 0 
         
+        self.optimizers = {
+            "GD": GradientDescent,
+            "LBFGS": LBFGS,
+            "ADABelief": AdaBeliefOptimizer,
+            "Lion": LionOptimizer
+            }
     def __call__(self):
 
         return self
@@ -135,37 +129,32 @@ class LogisticRegression:
         return loss
         
     def fit(self, X: NDArray[np.float64], Y: NDArray[np.float64], sample_weight=None) -> "LogisticRegression":
-        """
-        Train the model using the selected solver.
-
-        Args:
-            X: Input feature matrix of shape (n_samples, n_features).
-            Y: Class label array of shape (n_samples,).
-
-        Returns:
-            Self (fitted model).
-        """
-        
         self.n_features = X.shape[1]
         self.n_classes = len(np.unique(Y)) if Y.ndim == 1 else Y.shape[1]
+
         limit = np.sqrt(6 / (self.n_features + self.n_classes))
         self.theta = np.random.uniform(-limit, limit, size=(self.n_features + 1, self.n_classes))
-        self.Y = Y 
+
+        self.Y = Y
         self.X = X
         self.sample_weight = sample_weight if sample_weight is not None else np.ones_like(Y, dtype=np.float64)
         self.X_bias = self._add_bias(X)
 
-        if self.solver == "GD":
-            self.theta = GradientDescent(self.cross_entropy, self.theta, self.lr, self.n_iter, self.tol, verbose=self.verbose)
-        elif self.solver == "LBFGS":
-            self.theta = LBFGS(self.cross_entropy, self.theta, self.lr, self.n_iter, self.m, self.tol, verbose=self.verbose)
-        elif self.solver == "ADABelief":
-            self.theta = AdaBeliefOptimizer(self.cross_entropy, 
-                                               init_x=self.theta, lr=self.lr, n_iter=self.n_iter, tol=self.tol, 
-                                               verbose=self.verbose,
-                                               weight_decay = self.weight_decay
-                                               )
+        loss_fn = self.cross_entropy
+        opt_func = self.optimizers.get(self.solver)
 
+        if opt_func is None:
+            raise ValueError(f"Unknown optimization method: {self.solver}")
+
+        self.theta = opt_func(
+            loss_fn,
+            init_x=self.theta,
+            lr=self.lr,
+            n_iter=self.n_iter,
+            tol=self.tol,
+            verbose=self.verbose,
+            **({"weight_decay": self.weight_decay} if self.solver == "ADABelief" else {})
+        )
 
         return self
 
